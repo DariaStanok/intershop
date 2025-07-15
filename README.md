@@ -38,7 +38,6 @@ PostgreSQL is used as the primary database and runs in a Docker container.
 	spring.jpa.hibernate.ddl-auto=update
 	spring.jpa.show-sql=true```
 
-
 ## Build Executable JAR
 
 - To compile and package the application:
