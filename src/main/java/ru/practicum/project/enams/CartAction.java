@@ -2,5 +2,5 @@ package ru.practicum.project.enams;
 
 public enum CartAction {
 
-	PLUS, MINUS, DELETE
+	PLUS, MINUS, DELETE, ADD
 }

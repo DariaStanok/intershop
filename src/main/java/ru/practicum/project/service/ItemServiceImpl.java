@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.SortType;
 import ru.practicum.project.exeption.ItemNotFoundException;
+import ru.practicum.project.model.Cart;
 import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.ItemRepository;
 import ru.practicum.project.util.ViewUtils;
@@ -23,23 +24,34 @@ public class ItemServiceImpl implements ItemService {
 	
 	private final ItemRepository itemRepository;
     private final ModelMapper modelMapper;
+ 
 
 	@Override
-	public List<List<ItemDto>> getItems(String search, SortType sortType, int pageNumber, int pageSize) {
+	public List<List<ItemDto>> getItems(String search, SortType sortType, int pageNumber, int pageSize, Cart cart) {
 		Page<Item> itemPage = fetchItemPage(search, sortType, pageNumber, pageSize);
 
 		if (itemPage.isEmpty()) {
 			throw new ItemNotFoundException();
 		}
 
-		List<ItemDto> itemDto = itemPage.getContent()
-				.stream()
-				.map(item -> modelMapper.map(item, ItemDto.class))
-				.toList();
+		  List<ItemDto> itemDtos = itemPage.getContent()
+		            .stream()
+		            .map(item -> {
+		                ItemDto dto = modelMapper.map(item, ItemDto.class);
+		                dto.setCount(0); 
+		                if (cart != null && !cart.getItems().isEmpty()) {
+		                    cart.getItems().stream()
+		                            .filter(cl -> cl.getItem().getId().equals(item.getId()))
+		                            .findFirst()
+		                            .ifPresent(cl -> dto.setCount(cl.getQuantity()));
+		                }
+		                return dto;
+		            })
+		            .toList();
 
-		return ViewUtils.splitToRows(itemDto, 3);
+		return ViewUtils.splitToRows(itemDtos, 3);
 	}
-	
+
 	@Override
 	public Page<Item> fetchItemPage(String search, SortType sortType, int pageNumber, int pageSize) {
 		    Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, getSort(sortType));
