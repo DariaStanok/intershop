@@ -54,7 +54,7 @@
     </tr>
     <tr>
         <td style="text-align:right">
-            <form action="/buy" method="post" th:if="${items.size() > 0}">
+          <form th:action="@{/orders/buy}" method="post" th:if="${items.size() > 0}">
                 <button>Купить</button>
             </form>
         </td>

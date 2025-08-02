@@ -2,19 +2,14 @@ package ru.practicum.project.service;
 
 import java.util.List;
 
-import org.springframework.data.domain.Page;
-
+import reactor.core.publisher.Mono;
 import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.SortType;
-import ru.practicum.project.model.Cart;
-import ru.practicum.project.model.Item;
 
 public interface ItemService {
 
-	List<List<ItemDto>> getItems(String search, SortType sortType, int pageNumber, int pageSize, Cart cart);
-	
-	Page<Item> fetchItemPage(String search, SortType sortType, int pageNumber, int pageSize);
+	Mono<List<List<ItemDto>>> getItems(String search, SortType sortType, int pageNumber, int pageSize, Long cartId);
 
-	ItemDto getItemById(Long id, int count);
+	Mono<ItemDto> getItemById(Long id, int count);
 
 }

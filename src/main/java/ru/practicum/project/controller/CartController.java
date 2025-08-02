@@ -1,37 +1,32 @@
 package ru.practicum.project.controller;
 
-import java.util.List;
-
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
-import jakarta.servlet.http.HttpSession;
-import ru.practicum.project.dto.ItemDto;
-import ru.practicum.project.model.Cart;
+import lombok.RequiredArgsConstructor;
+import reactor.core.publisher.Mono;
 import ru.practicum.project.service.CartService;
-import ru.practicum.project.util.CartUtils;
 
 @Controller
 @RequestMapping("/cart")
+@RequiredArgsConstructor
 public class CartController {
 
 	private final CartService cartService;
 
-	public CartController(CartService cartService) {
-		this.cartService = cartService;
-	}
-	
 	@GetMapping("/items")
-    public String viewCart(HttpSession session, Model model) {
-        Cart cart = CartUtils.getOrCreateCart(session);
-        List<ItemDto> cartItems = cartService.getCartItems(cart);
-        int total = cartService.getTotal(cart);
+	public Mono<String> viewCart(@RequestParam("cartId") Long cartId, Model model) {
+		Mono<?> itemsMono = cartService.getCartItems(cartId).collectList();
+		Mono<Integer> totalMono = cartService.getTotal(cartId);
 
-        model.addAttribute("items", cartItems);
-        model.addAttribute("total", total);
-
-        return "cart";
-    }
+		return Mono.zip(itemsMono, totalMono)
+				.map(tuple -> {
+					model.addAttribute("items", tuple.getT1());
+					model.addAttribute("total", tuple.getT2());
+					return "cart";
+				});
+	}
 }

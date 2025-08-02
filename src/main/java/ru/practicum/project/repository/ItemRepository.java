@@ -1,15 +1,14 @@
 package ru.practicum.project.repository;
 
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.r2dbc.repository.R2dbcRepository;
 import org.springframework.stereotype.Repository;
 
+import reactor.core.publisher.Flux;
 import ru.practicum.project.model.Item;
 
 @Repository
-public interface ItemRepository extends JpaRepository<Item, Long> {
+public interface ItemRepository extends R2dbcRepository <Item, Long> {
 
-	Page<Item> findByTitleContainingIgnoreCase(String title, Pageable pageable);
+	Flux<Item> findByTitleContainingIgnoreCase(String name);
 }

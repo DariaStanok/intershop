@@ -1,20 +1,20 @@
 package ru.practicum.project.service;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import org.modelmapper.ModelMapper;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
+import reactor.core.publisher.Mono;
 import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.SortType;
 import ru.practicum.project.exeption.ItemNotFoundException;
-import ru.practicum.project.model.Cart;
+import ru.practicum.project.model.CartLine;
 import ru.practicum.project.model.Item;
+import ru.practicum.project.repository.CartLineRepository;
 import ru.practicum.project.repository.ItemRepository;
 import ru.practicum.project.util.ViewUtils;
 
@@ -23,57 +23,68 @@ import ru.practicum.project.util.ViewUtils;
 public class ItemServiceImpl implements ItemService {
 	
 	private final ItemRepository itemRepository;
+	private final CartLineRepository cartLineRepository;
     private final ModelMapper modelMapper;
+    
+
+	@Override
+	public Mono<List<List<ItemDto>>> getItems(String search, SortType sortType, int pageNumber, int pageSize, Long cartId) {
+		Mono<List<Item>> itemsMono = fetchPagedAndSortedItems(search, sortType, pageNumber, pageSize);
+		Mono<Map<Long, Integer>> cartMapMono = fetchCartItemMap(cartId);
+
+		return Mono.zip(itemsMono, cartMapMono)
+				.map(tuple -> toItemDtoRows(tuple.getT1(), tuple.getT2()));
+	}
+
+	@Override
+	public Mono<ItemDto> getItemById(Long id, int count) {
+		return itemRepository.findById(id)
+				.switchIfEmpty(Mono.error(new ItemNotFoundException()))
+				.map(item -> toItemDto(item, count));
+	}
  
 
-	@Override
-	public List<List<ItemDto>> getItems(String search, SortType sortType, int pageNumber, int pageSize, Cart cart) {
-		Page<Item> itemPage = fetchItemPage(search, sortType, pageNumber, pageSize);
+	private Mono<List<Item>> fetchPagedAndSortedItems(String search, SortType sortType, int pageNumber, int pageSize) {
+		int skip = (pageNumber - 1) * pageSize;
+		return itemRepository.findByTitleContainingIgnoreCase(search)
+				.sort(getComparator(sortType))
+				.skip(skip)
+				.take(pageSize)
+				.collectList()
+				.flatMap(items -> {
+					if (items.isEmpty()) {
+						return Mono.error(new ItemNotFoundException());
+					}
+					return Mono.just(items);
+				});
+	}
 
-		if (itemPage.isEmpty()) {
-			throw new ItemNotFoundException();
+	private Mono<Map<Long, Integer>> fetchCartItemMap(Long cartId) {
+		if (cartId == null) {
+			return Mono.just(Map.of());
 		}
-
-		  List<ItemDto> itemDtos = itemPage.getContent()
-		            .stream()
-		            .map(item -> {
-		                ItemDto dto = modelMapper.map(item, ItemDto.class);
-		                dto.setCount(0); 
-		                if (cart != null && !cart.getItems().isEmpty()) {
-		                    cart.getItems().stream()
-		                            .filter(cl -> cl.getItem().getId().equals(item.getId()))
-		                            .findFirst()
-		                            .ifPresent(cl -> dto.setCount(cl.getQuantity()));
-		                }
-		                return dto;
-		            })
-		            .toList();
-
-		return ViewUtils.splitToRows(itemDtos, 3);
+		return cartLineRepository.findByCartId(cartId)
+				.collectMap(CartLine::getItemId, CartLine::getQuantity);
 	}
 
-	@Override
-	public Page<Item> fetchItemPage(String search, SortType sortType, int pageNumber, int pageSize) {
-		    Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, getSort(sortType));
-		    return itemRepository.findByTitleContainingIgnoreCase(search, pageable);
-		
+	private List<List<ItemDto>> toItemDtoRows(List<Item> items, Map<Long, Integer> cartMap) {
+		List<ItemDto> dtos = items.stream()
+				.map(item -> toItemDto(item, cartMap.getOrDefault(item.getId(), 0)))
+				.toList();
+		return ViewUtils.splitToRows(dtos, 3);
 	}
 
-	@Override
-	public ItemDto getItemById(Long id, int count) {
-		Item item = itemRepository.findById(id).orElseThrow(ItemNotFoundException::new);
+	private ItemDto toItemDto(Item item, int count) {
 		ItemDto dto = modelMapper.map(item, ItemDto.class);
 		dto.setCount(count);
 		return dto;
 	}
 
-	
-	private Sort getSort(SortType sortType) {
-	    return switch (sortType) {
-	        case PRICE -> Sort.by(Sort.Direction.ASC, "price");
-	        case ABC -> Sort.by(Sort.Direction.ASC, "title"); 
-	        case NO -> Sort.unsorted();
-	    };
-	    
+	private Comparator<Item> getComparator(SortType sortType) {
+		return switch (sortType) {
+			case PRICE -> Comparator.comparingInt(Item::getPrice);
+			case ABC -> Comparator.comparing(Item::getTitle, String.CASE_INSENSITIVE_ORDER);
+			case NO -> (a, b) -> 0;
+		};
 	}
 }

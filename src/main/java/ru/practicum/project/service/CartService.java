@@ -1,18 +1,17 @@
 package ru.practicum.project.service;
 
-import java.util.List;
-
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.CartAction;
-import ru.practicum.project.model.Cart;
 
 public interface CartService {
 
-	List<ItemDto> getCartItems(Cart cart);
+	Flux<ItemDto> getCartItems(Long cartId);
 
-	int getTotal(Cart cart);
+	Mono<Integer> getTotal(Long cartId);
 
-	void updateItem(Cart cart, Long itemId, CartAction action);
+	Mono<Void> updateItem(Long cartId, Long itemId, CartAction action);
 	
 	
 }

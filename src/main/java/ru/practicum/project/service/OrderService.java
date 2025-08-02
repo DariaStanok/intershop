@@ -1,15 +1,14 @@
 package ru.practicum.project.service;
 
-import java.util.List;
-
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import ru.practicum.project.dto.OrderDto;
-import ru.practicum.project.model.Cart;
 
 public interface OrderService {
 
-	OrderDto createOrder(Cart cart);
+	Mono<OrderDto> createOrder(Long cartId);
 
-	List<OrderDto> getAllOrders();
+	Flux<OrderDto> getAllOrders();
 
-	OrderDto getOrderById(Long id);
+	Mono<OrderDto> getOrderById(Long id);
 }
