@@ -1,12 +1,8 @@
 package ru.practicum.project.utils;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.HashMap;
@@ -14,62 +10,76 @@ import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.server.WebSession;
 
-import jakarta.servlet.http.HttpSession;
-import ru.practicum.project.model.Cart;
+import reactor.core.publisher.Mono;
 import ru.practicum.project.util.CartUtils;
 
 class CartUtilsTest {
 
-	private HttpSession session;
+    private WebSession session;
+    private Map<String, Object> attributes;
 
     @BeforeEach
     void setUp() {
-        session = mock(HttpSession.class);
+        attributes = new HashMap<>();
+        session = mock(WebSession.class);
+        when(session.getAttribute(anyString())).thenAnswer(inv -> attributes.get(inv.getArgument(0)));
+        when(session.getAttributes()).thenReturn(attributes);
     }
 
     @Test
-    void getOrCreateCartTest() {
-        Cart expectedCart = new Cart();
-        when(session.getAttribute("cart")).thenReturn(expectedCart);
+    void shouldReturnExistingCartId() {
+        attributes.put("cartId", 123L);
 
-        Cart result = CartUtils.getOrCreateCart(session);
-        assertSame(expectedCart, result);
+        Mono<Long> result = CartUtils.getOrCreateCartId(session);
+
+        assertThat(result.block()).isEqualTo(123L);
     }
 
     @Test
-    void getOrCreateNewCartTest() {
-        when(session.getAttribute("cart")).thenReturn(null);
+    void shouldGenerateAndStoreNewCartId() {
+        Mono<Long> result = CartUtils.getOrCreateCartId(session);
 
-        Cart result = CartUtils.getOrCreateCart(session);
-
-        assertNotNull(result);
-        verify(session).setAttribute(eq("cart"), any(Cart.class));
+        Long cartId = result.block();
+        assertThat(cartId).isNotNull();
+        assertThat(attributes).containsEntry("cartId", cartId);
     }
 
     @Test
-    void getSelectionTest() {
-        Map<Long, Integer> selection = new HashMap<>();
-        when(session.getAttribute("selection")).thenReturn(selection);
+    void shouldReturnExistingSelectionMap() {
+        Map<Long, Integer> selection = Map.of(1L, 2);
+        attributes.put("selection", selection);
 
         Map<Long, Integer> result = CartUtils.getSelection(session);
-        assertSame(selection, result);
+
+        assertThat(result).isEqualTo(selection);
     }
 
     @Test
-    void getNewSelectionTest() {
-        when(session.getAttribute("selection")).thenReturn(null);
+    void shouldCreateNewSelectionMapIfNoneExists() {
+        Map<Long, Integer> result = CartUtils.getSelection(session);
+
+        assertThat(result).isEmpty();
+        assertThat(attributes.get("selection")).isSameAs(result);
+    }
+
+    @Test
+    void shouldResetSelectionIfAttributeWrongType() {
+        attributes.put("selection", "not a map");
 
         Map<Long, Integer> result = CartUtils.getSelection(session);
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
-        verify(session).setAttribute(eq("selection"), any(Map.class));
+
+        assertThat(result).isEmpty();
+        assertThat(attributes.get("selection")).isSameAs(result);
     }
 
     @Test
-    void clearSelectionTest() {
+    void shouldClearSelection() {
+        attributes.put("selection", Map.of(1L, 1));
+
         CartUtils.clearSelection(session);
-        verify(session).removeAttribute("selection");
-    }
 
+        assertThat(attributes).doesNotContainKey("selection");
+    }
 }

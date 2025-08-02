@@ -1,63 +1,55 @@
 package ru.practicum.project.integration;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mock.web.MockHttpSession;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
-import ru.practicum.project.model.Cart;
 import ru.practicum.project.model.CartLine;
 import ru.practicum.project.model.Item;
+import ru.practicum.project.repository.CartLineRepository;
 import ru.practicum.project.repository.ItemRepository;
 import ru.practicum.project.repository.OrderRepository;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureWebTestClient
 class OrderIntegrationTest {
-	@Autowired
-    private MockMvc mockMvc;
+
+    @Autowired
+    private WebTestClient webTestClient;
 
     @Autowired
     private ItemRepository itemRepository;
 
     @Autowired
+    private CartLineRepository cartLineRepository;
+
+    @Autowired
     private OrderRepository orderRepository;
 
     private Item savedItem;
-    
+
     @BeforeEach
     void setup() {
-        orderRepository.deleteAll();
-        itemRepository.deleteAll();
+        orderRepository.deleteAll().block();
+        cartLineRepository.deleteAll().block();
+        itemRepository.deleteAll().block();
 
-        Item item = new Item();
-        item.setTitle("Test item");
-        item.setDescription("Test description");
-        item.setPrice(100);
-        item.setImgPath("/img.jpg");
-        savedItem = itemRepository.save(item);
-    }
-	@Test
-	void createSaveAndRedirectTest() throws Exception {
-        Cart cart = new Cart();
-        CartLine line = new CartLine(null, 2, cart, savedItem);
-        cart.setItems(new ArrayList<>(List.of(line)));
+        savedItem = itemRepository
+            .save(new Item(null, "Test item", "desc", 100, "/img.jpg", 0))
+            .block();
 
-        MockHttpSession session = new MockHttpSession();
-        session.setAttribute("cart", cart);
-        mockMvc.perform(post("/orders/buy").session(session))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/orders/*?new=true"));
+        cartLineRepository.save(new CartLine(null, 2, 999L, savedItem.getId())).block(); // cartId = 999L
     }
 
+    @Test
+    void shouldCreateOrderAndRedirect() {
+        webTestClient.post()
+            .uri("/orders/buy?cartId=999")
+            .exchange()
+            .expectStatus().is3xxRedirection()
+            .expectHeader().valueMatches("Location", "/orders/\\d+\\?newOrder=true");
+    }
 }

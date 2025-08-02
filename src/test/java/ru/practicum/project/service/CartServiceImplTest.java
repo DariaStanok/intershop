@@ -1,11 +1,10 @@
 package ru.practicum.project.service;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.util.List;
-import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,90 +13,145 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.modelmapper.ModelMapper;
 
-import ru.practicum.project.dto.ItemDto;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 import ru.practicum.project.enams.CartAction;
-import ru.practicum.project.model.Cart;
 import ru.practicum.project.model.CartLine;
 import ru.practicum.project.model.Item;
+import ru.practicum.project.repository.CartLineRepository;
 import ru.practicum.project.repository.ItemRepository;
 
 @ExtendWith(MockitoExtension.class)
 class CartServiceImplTest {
-	@Mock
-	private ItemRepository itemRepository;
 
-	private ModelMapper modelMapper; 
+    @Mock
+    private CartLineRepository cartLineRepository;
 
-	private CartServiceImpl cartService;
+    @Mock
+    private ItemRepository itemRepository;
 
-	private Cart cart;
-	private Item item;
-	
-	@BeforeEach
-	void setUp() {
-		modelMapper = new ModelMapper();
-		cartService = new CartServiceImpl(itemRepository, modelMapper);
+    private CartServiceImpl cartService;
 
-		item = new Item();
-		item.setId(1L);
-		item.setPrice(100);
-		item.setTitle("Test item");
-		cart = new Cart();
-	}
-    
-    @Test
-    void getTotalTest() {
-        cart.getItems().add(new CartLine(null, 2, cart, item));
-        int total = cartService.getTotal(cart);
-        assertEquals(200, total);
+    private final ModelMapper modelMapper = new ModelMapper();
+
+    private final Long cartId = 1L;
+    private final Long itemId = 10L;
+
+    private Item item;
+    private CartLine line;
+
+    @BeforeEach
+    void setUp() {
+        cartService = new CartServiceImpl(cartLineRepository, itemRepository, modelMapper);
+
+        item = new Item();
+        item.setId(itemId);
+        item.setTitle("Test item");
+        item.setPrice(100);
+        item.setDescription("desc");
+        item.setImgPath("img.jpg");
+
+        line = new CartLine(5L, 2, cartId, itemId);
     }
 
     @Test
-    void getCartItemsReturnDtoTest() {
-        cart.getItems().add(new CartLine(null, 3, cart, item));
-        List<ItemDto> result = cartService.getCartItems(cart);
+    void shouldReturnCartItems() {
+        when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.just(line));
+        when(itemRepository.findById(itemId)).thenReturn(Mono.just(item));
 
-        assertEquals(1, result.size());
-        assertEquals(3, result.get(0).getCount());
-        assertEquals(item.getId(), result.get(0).getId());
+        StepVerifier.create(cartService.getCartItems(cartId))
+            .assertNext(dto -> {
+                assertThat(dto.getId()).isEqualTo(itemId);
+                assertThat(dto.getTitle()).isEqualTo(item.getTitle());
+                assertThat(dto.getCount()).isEqualTo(2);
+            })
+            .verifyComplete();
     }
 
     @Test
-    void updateItemAddLine() {
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(item));
-        cartService.updateItem(cart, 1L, CartAction.ADD);
+    void shouldCalculateTotal() {
+        when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.just(line));
+        when(itemRepository.findById(itemId)).thenReturn(Mono.just(item));
 
-        assertEquals(1, cart.getItems().size());
-        assertEquals(1, cart.getItems().get(0).getQuantity());
+        StepVerifier.create(cartService.getTotal(cartId))
+            .expectNext(200)
+            .verifyComplete();
     }
 
     @Test
-    void updateItemIncrementQuantity() {
-        cart.getItems().add(new CartLine(null, 2, cart, item));
-        cartService.updateItem(cart, 1L, CartAction.PLUS);
+    void shouldAddNewLineIfAbsent() {
+        when(cartLineRepository.findByCartIdAndItemId(cartId, itemId))
+            .thenReturn(Mono.empty());
 
-        assertEquals(3, cart.getItems().get(0).getQuantity());
+        when(cartLineRepository.save(any(CartLine.class)))
+            .thenReturn(Mono.just(new CartLine(7L, 1, cartId, itemId)));
+
+        StepVerifier.create(cartService.updateItem(cartId, itemId, CartAction.ADD))
+            .verifyComplete();
+
+        verify(cartLineRepository).save(argThat(saved ->
+            saved.getCartId().equals(cartId) &&
+            saved.getItemId().equals(itemId) &&
+            saved.getQuantity() == 1
+        ));
     }
 
     @Test
-    void updateItemDecrementQuantity() {
-        cart.getItems().add(new CartLine(null, 2, cart, item));
-        cartService.updateItem(cart, 1L, CartAction.MINUS);
+    void shouldIncrementQuantity() {
+        when(cartLineRepository.findByCartIdAndItemId(cartId, itemId))
+            .thenReturn(Mono.just(line));
 
-        assertEquals(1, cart.getItems().get(0).getQuantity());
+        when(cartLineRepository.save(any(CartLine.class)))
+            .thenReturn(Mono.just(new CartLine(5L, 3, cartId, itemId)));
+
+        StepVerifier.create(cartService.updateItem(cartId, itemId, CartAction.PLUS))
+            .verifyComplete();
+
+        verify(cartLineRepository).save(argThat(saved -> saved.getQuantity() == 3));
     }
 
     @Test
-    void updateItemRemoveZeroValue() {
-        cart.getItems().add(new CartLine(null, 1, cart, item));
-        cartService.updateItem(cart, 1L, CartAction.MINUS);
-        assertTrue(cart.getItems().isEmpty());
+    void shouldDecrementQuantity() {
+        when(cartLineRepository.findByCartIdAndItemId(cartId, itemId))
+            .thenReturn(Mono.just(line));
+
+        when(cartLineRepository.save(any(CartLine.class)))
+            .thenReturn(Mono.just(new CartLine(5L, 1, cartId, itemId)));
+
+        StepVerifier.create(cartService.updateItem(cartId, itemId, CartAction.MINUS))
+            .verifyComplete();
+
+        verify(cartLineRepository).save(argThat(saved -> saved.getQuantity() == 1));
     }
 
     @Test
-    void updateItemRemoveLine() {
-        cart.getItems().add(new CartLine(null, 2, cart, item));
-        cartService.updateItem(cart, 1L, CartAction.DELETE);
-        assertTrue(cart.getItems().isEmpty());
+    void shouldRemoveLineWhenQuantityReachesZero() {
+        CartLine single = new CartLine(5L, 1, cartId, itemId);
+
+        when(cartLineRepository.findByCartIdAndItemId(cartId, itemId))
+            .thenReturn(Mono.just(single));
+
+        when(cartLineRepository.deleteById(single.getId()))
+            .thenReturn(Mono.empty());
+
+        StepVerifier.create(cartService.updateItem(cartId, itemId, CartAction.MINUS))
+            .verifyComplete();
+
+        verify(cartLineRepository).deleteById(5L);
+    }
+
+    @Test
+    void shouldDeleteLineWhenActionIsDelete() {
+        when(cartLineRepository.findByCartIdAndItemId(cartId, itemId))
+            .thenReturn(Mono.just(line));
+
+        when(cartLineRepository.deleteById(line.getId()))
+            .thenReturn(Mono.empty());
+
+        StepVerifier.create(cartService.updateItem(cartId, itemId, CartAction.DELETE))
+            .verifyComplete();
+
+        verify(cartLineRepository).deleteById(line.getId());
     }
 }

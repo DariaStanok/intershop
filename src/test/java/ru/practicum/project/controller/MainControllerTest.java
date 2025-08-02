@@ -2,85 +2,92 @@ package ru.practicum.project.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
-import ru.practicum.project.dto.ItemDto;
+import reactor.core.publisher.Mono;
 import ru.practicum.project.enams.CartAction;
-import ru.practicum.project.model.Item;
 import ru.practicum.project.service.CartService;
 import ru.practicum.project.service.ItemService;
 
-@WebMvcTest(MainController.class)
+@WebFluxTest(MainController.class)
 class MainControllerTest {
 
-	@Autowired
-    private MockMvc mockMvc;
+    @Autowired
+    private WebTestClient webTestClient;
 
     @MockBean
     private ItemService itemService;
 
     @MockBean
     private CartService cartService;
-    
-    @Test
-    void redirectsToMainTest() throws Exception {
-        mockMvc.perform(get("/"))
-            .andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/main/items"));
-    }
-    
-    @Test
-    void mainPageWithModelAttributesTest() throws Exception {
-      
-        List<List<ItemDto>> rows = List.of();
-        Page<Item> itemPage = new PageImpl<>(List.of());
 
-        when(cartService.getCartItems(any())).thenReturn(List.of());
-        when(itemService.getItems(anyString(), any(), anyInt(), anyInt(), any())).thenReturn(rows);
-        when(itemService.fetchItemPage(anyString(), any(), anyInt(), anyInt())).thenReturn(itemPage);
-
-        mockMvc.perform(get("/main/items")
-                        .param("search", "")
-                        .param("sort", "NO")
-                        .param("pageSize", "10")
-                        .param("pageNumber", "1"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("main"))
-                .andExpect(model().attributeExists("items", "pageNumber", "pageSize", "hasNext", "hasPrevious", "search", "sort"));
-    }
-    
     @Test
-    void updateCartItemTest() throws Exception {
-        mockMvc.perform(post("/main/items/1")
-                        .param("action", "plus")
-                        .param("search", "")
-                        .param("sort", "NO")
-                        .param("pageSize", "10")
-                        .param("pageNumber", "1"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/main/items?search=&sort=NO&pageSize=10&pageNumber=1"));
-
-        verify(cartService).updateItem(any(), eq(1L), eq(CartAction.PLUS));
+    void redirectsToMainTest() {
+        webTestClient.get()
+                .uri("/")
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().valueEquals("Location", "/main/items");
     }
 
+    @Test
+    void mainPageWithModelAttributesTest() {
+        when(itemService.getItems(anyString(), any(), anyInt(), anyInt(), anyLong()))
+                .thenReturn(Mono.just(List.of()));
+        when(cartService.getTotal(anyLong()))
+                .thenReturn(Mono.just(0));
 
+        webTestClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/main/items")
+                        .queryParam("search", "")
+                        .queryParam("sort", "NO")
+                        .queryParam("pageSize", "10")
+                        .queryParam("pageNumber", "1")
+                        .queryParam("cartId", "123")
+                        .build())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class) 
+                .consumeWith(response -> {
+                    String html = response.getResponseBody();
+                    assert html != null;
+                    assert html.contains("main"); 
+                });
+    }
+
+    @Test
+    void updateCartItemTest() {
+        when(cartService.updateItem(anyLong(), anyLong(), any()))
+                .thenReturn(Mono.empty());
+
+        webTestClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/main/items/1")
+                        .queryParam("action", "plus")
+                        .queryParam("cartId", "123")
+                        .queryParam("search", "")
+                        .queryParam("sort", "NO")
+                        .queryParam("pageSize", "10")
+                        .queryParam("pageNumber", "1")
+                        .build())
+                .exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().valueMatches("Location",
+                	    "/main/items\\?.*(cartId=123).*");
+
+        verify(cartService).updateItem(eq(123L), eq(1L), eq(CartAction.PLUS));
+    }
 }

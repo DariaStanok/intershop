@@ -27,16 +27,15 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
-	runtimeOnly 'io.r2dbc:r2dbc-postgresql'
-
+	runtimeOnly 'io.r2dbc:r2dbc-postgresql:0.8.13.RELEASE'
 	implementation 'org.modelmapper:modelmapper:3.2.0'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
-
 	testImplementation('org.springframework.boot:spring-boot-starter-test') {
+		exclude group: 'org.springframework', module: 'spring-webmvc'
 		exclude group: 'org.mockito', module: 'mockito-core'
 	}
-	testImplementation 'org.springframework:spring-webflux'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
 	testImplementation 'io.projectreactor:reactor-test'
 	testImplementation 'org.mockito:mockito-junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

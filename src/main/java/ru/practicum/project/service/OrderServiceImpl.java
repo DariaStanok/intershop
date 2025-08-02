@@ -52,16 +52,16 @@ public class OrderServiceImpl implements OrderService {
                                         .thenMany(Flux.fromIterable(orderItems))
                                         .collectList()
                                         .flatMap(savedItems ->
-                                                toOrderDto(savedOrder.getId(), savedItems)
+                                            toOrderDto(savedOrder.getId(), savedItems)
+                                        )
+                                        .flatMap(dto ->
+                                            cartLineRepository.findByCartId(cartId)
+                                                .flatMap(line -> cartLineRepository.deleteById(line.getId()))
+                                                .then(Mono.just(dto))
                                         );
-                            })
-                            .then(cartLineRepository.findByCartId(cartId)
-                                    .flatMap(line -> cartLineRepository.deleteById(line.getId()))
-                                    .then(Mono.empty())
-                            );
+                            });
                 });
     }
-
     @Override
     public Flux<OrderDto> getAllOrders() {
         return orderRepository.findAll()

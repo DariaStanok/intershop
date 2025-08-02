@@ -42,7 +42,7 @@ public class DataLoader implements ApplicationRunner {
 					return Mono.empty();
 		})
 			.then() 
-			.subscribe();	
+			.block();	
 	}
 
 }
