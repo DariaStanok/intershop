@@ -1,0 +1,47 @@
+# Gradle
+
+.gradle/
+build/
+
+# Environment config 
+.env  
+
+# PostgreSQL 
+pgdata/  
+
+# Docker
+docker-compose.override.yml  
+  
+# Eclipse 
+
+.classpath
+.project
+.settings/
+*.launch
+
+# IntelliJ IDEA
+ 
+.idea/
+*.iml
+
+# Windows OS
+
+Thumbs.db
+ehthumbs.db
+
+# Logs
+
+*.log
+*.tmp
+*.swp
+
+# Java
+
+*.class
+
+# Spring/Dev
+
+.factorypath
+
+# File 
+uploads/
