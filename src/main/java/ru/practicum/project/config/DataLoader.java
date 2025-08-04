@@ -2,16 +2,15 @@ package ru.practicum.project.config;
 
 import java.util.List;
 
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
-import reactor.core.publisher.Mono;
 import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.ItemRepository;
 
 @Component
-public class DataLoader implements ApplicationRunner {
+public class DataLoader implements ApplicationListener<ApplicationReadyEvent> {
 
 	private final ItemRepository itemRepository;
 
@@ -19,11 +18,12 @@ public class DataLoader implements ApplicationRunner {
 		this.itemRepository = itemRepository;
 	}
 
+
 	@Override
-	public void run(ApplicationArguments args) throws Exception {
+	public void onApplicationEvent(ApplicationReadyEvent event){
 		itemRepository.count()
-				.flatMap (count-> {	
-					if(count == 0) {
+				.filter(count -> count == 0) 	
+					.flatMapMany(c -> {
 		               List<Item> items = List.of(
 							new Item(null, "Black cap", "Sport black cap", 2000, "/uploads/cap_black.png", 0),
 							new Item(null, "Orange cap", "Sport cap", 2500, "/uploads/cap_orange.png", 0),
@@ -37,12 +37,11 @@ public class DataLoader implements ApplicationRunner {
 							new Item(null, "Black t-shirt", "Casual black t-shirt", 2000, "/uploads/tshirt_black.png", 0),
 							new Item(null, "Gray t-shirt", "Casual gray t-shirt", 2000, "/uploads/tshirt_gray.png", 0),
 							new Item(null, "White t-shirt", "Casual white t-shirt", 2000, "/uploads/tshirt_white.png", 0));
-					itemRepository.saveAll(items);
-					}
-					return Mono.empty();
+					return itemRepository.saveAll(items);
+					
+					
 		})
 			.then() 
-			.block();	
-	}
-
+			.subscribe(); 	
+	}	
 }
