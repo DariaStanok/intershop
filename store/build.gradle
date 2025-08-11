@@ -1,0 +1,78 @@
+plugins {
+    id 'org.springframework.boot' version '3.5.3'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'java'
+    id 'org.openapi.generator' version '7.10.0'
+}
+
+group = 'ru.practicum.project'
+version = '0.0.2-SNAPSHOT'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute module('io.r2dbc:r2dbc-postgresql') using module('org.postgresql:r2dbc-postgresql:1.0.5.RELEASE')
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    runtimeOnly 'org.postgresql:r2dbc-postgresql:1.0.5.RELEASE'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    implementation 'org.openapitools:jackson-databind-nullable:0.2.6'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+    implementation 'io.swagger.core.v3:swagger-annotations:2.2.22'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'org.modelmapper:modelmapper:3.2.0'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation('org.springframework.boot:spring-boot-starter-test') {
+        exclude group: 'org.springframework', module: 'spring-webmvc'
+        exclude group: 'org.mockito', module: 'mockito-core'
+    }
+    testImplementation 'io.projectreactor:reactor-test'
+    testImplementation 'org.mockito:mockito-junit-jupiter'
+
+    testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
+    testImplementation 'org.testcontainers:junit-jupiter'
+
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+openApiGenerate {
+    inputSpec      = "$rootDir/openapi/payment-service-api.yaml"
+    generatorName  = "java"
+    library        = "webclient"
+    outputDir      = "$buildDir/generated"
+    apiPackage     = "ru.practicum.project.store.payment.client.api"
+    modelPackage   = "ru.practicum.project.store.payment.client.model"
+    invokerPackage = "ru.practicum.project.store.payment.client.invoker"
+    configOptions = [
+        dateLibrary  : "java8",
+        useJakartaEe : "true"
+    ]
+}
+
+tasks.compileJava.dependsOn tasks.openApiGenerate
+sourceSets.main.java.srcDirs += "$buildDir/generated/src/main/java"
+
+tasks.named('test') { useJUnitPlatform() }
+
+springBoot { mainClass = 'ru.practicum.project.IntershopApplication' }
+
+bootRun { sourceResources sourceSets.main }

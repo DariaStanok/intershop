@@ -1,0 +1,120 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  version: 1.0.0
+  description: Reactive payment service for the Intershop storefront
+servers:
+  - url: http://localhost:8081
+
+paths:
+  /api/payments/deposit:
+    post:
+      summary: Deposit funds
+      description: Increase the account balance by the given amount.
+      operationId: deposit
+      tags: [Payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmountRequest'
+      responses:
+        '200':
+          description: Deposit completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Payment service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/payments/withdraw:
+    post:
+      summary: Withdraw funds
+      description: Decrease the account balance by the given amount.
+      operationId: withdraw
+      tags: [Payments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmountRequest'
+      responses:
+        '200':
+          description: Withdraw completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '422':
+          description: Insufficient funds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Payment service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    AmountRequest:
+      type: object
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 12999
+          description: Amount in minor units (e.g., agorot)
+        currency:
+          type: string
+          example: ILS
+          description: ISO 4217 currency code
+      required: [amount, currency]
+
+    OperationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        newBalance:
+          type: integer
+          format: int64
+          nullable: true
+          example: 37001
+          description: Balance after operation; null if unsuccessful
+      required: [success]
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 422
+        message:
+          type: string
+          example: Insufficient funds
+      required: [code, message]
