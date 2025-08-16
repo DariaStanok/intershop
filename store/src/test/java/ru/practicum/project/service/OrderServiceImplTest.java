@@ -2,9 +2,14 @@ package ru.practicum.project.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,84 +55,137 @@ class OrderServiceImplTest {
     @BeforeEach
     void setUp() {
         orderService = new OrderServiceImpl(
-            orderRepository, orderItemRepository, cartLineRepository, itemRepository, modelMapper, paymentClient, itemQueryService
+                orderRepository, orderItemRepository, cartLineRepository,
+                itemRepository, modelMapper, paymentClient, itemQueryService
         );
         cartLine = new CartLine(5L, 2, cartId, itemId);
         item = new Item(itemId, "Phone", "desc", 300, "img.jpg", 0);
     }
 
     @Test
-    void shouldCreateOrderSuccessfullyAndDeleteCart() {
-        Order order = new Order(orderId);
-        long expectedTotal = 600L;
+    void createOrder_success_singleLine_andCleansCart() {
+        Order saved = new Order(orderId);
+        long expectedTotal = 2L * 300L; 
 
         when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.just(cartLine));
         when(itemRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(item));
-        when(paymentClient.withdraw(eq(expectedTotal), eq("ILS"))).thenReturn(Mono.just(true));
-        when(orderRepository.save(any(Order.class))).thenReturn(Mono.just(order));
+        when(paymentClient.withdraw(anyLong(), anyString())).thenReturn(Mono.just(true));
+        when(orderRepository.save(any(Order.class))).thenReturn(Mono.just(saved));
         when(orderItemRepository.save(any(OrderItem.class))).thenAnswer(inv -> {
             OrderItem oi = inv.getArgument(0);
             return Mono.just(new OrderItem(1L, oi.getOrderId(), oi.getItemId(), oi.getCount()));
         });
-        when(cartLineRepository.deleteById(cartId)).thenReturn(Mono.empty());
+        when(cartLineRepository.deleteByCartId(cartId)).thenReturn(Mono.just(1L));
 
         StepVerifier.create(orderService.createOrder(cartId))
-            .expectNextMatches(dto -> dto.getId().equals(orderId) && dto.getTotal() == 600)
-            .verifyComplete();
+                .assertNext(dto -> {
+                    assertThat(dto.getId()).isEqualTo(orderId);
+                    assertThat(dto.getTotal()).isEqualTo((int) expectedTotal);
+                })
+                .verifyComplete();
 
-        verify(cartLineRepository).deleteById(cartId);
+        verify(paymentClient).withdraw(eq(expectedTotal), eq("ILS"));
+        verify(cartLineRepository).deleteByCartId(cartId);
     }
 
     @Test
-    void shouldThrowIfCartIsEmpty() {
+    void createOrder_success_withDuplicateItemLines() {
+        CartLine cartLine2 = new CartLine(6L, 3, cartId, itemId);
+        long expectedTotal = (2L + 3L) * 300L; 
+
+        when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.fromIterable(List.of(cartLine, cartLine2)));
+        when(itemRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(item));
+        when(paymentClient.withdraw(anyLong(), anyString())).thenReturn(Mono.just(true));
+        when(orderRepository.save(any(Order.class))).thenReturn(Mono.just(new Order(orderId)));
+        when(orderItemRepository.save(any(OrderItem.class))).thenAnswer(inv -> {
+            OrderItem oi = inv.getArgument(0);
+            return Mono.just(new OrderItem(1L, oi.getOrderId(), oi.getItemId(), oi.getCount()));
+        });
+        when(cartLineRepository.deleteByCartId(cartId)).thenReturn(Mono.just(1L));
+        StepVerifier.create(orderService.createOrder(cartId))
+                .assertNext(dto -> {
+                    assertThat(dto.getId()).isEqualTo(orderId);
+                    assertThat(dto.getTotal()).isEqualTo((int) expectedTotal);
+                })
+                .verifyComplete();
+
+        verify(paymentClient).withdraw(eq(expectedTotal), eq("ILS"));
+        verify(cartLineRepository).deleteByCartId(cartId);
+    }
+
+    @Test
+    void createOrder_emptyCart_throwsEmptyCartException() {
         when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.empty());
-
         StepVerifier.create(orderService.createOrder(cartId))
-            .expectError(EmptyCartException.class)
-            .verify();
+                .expectError(EmptyCartException.class)
+                .verify();
     }
 
     @Test
-    void shouldGetAllOrdersWithItems() {
+    void createOrder_missingItem_throwsIllegalStateException_andDoesNotClean() {
+        when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.just(cartLine));
+        when(itemRepository.findAllById(any(Iterable.class))).thenReturn(Flux.empty());
+        StepVerifier.create(orderService.createOrder(cartId))
+                .expectError(IllegalStateException.class)
+                .verify();
+
+        verify(paymentClient, never()).withdraw(anyLong(), anyString());
+        verify(cartLineRepository, never()).deleteByCartId(cartId);
+    }
+
+    @Test
+    void createOrder_paymentFails_throwsRuntimeException_andDoesNotClean() {
+        long expectedTotal = 2L * 300L;
+
+        when(cartLineRepository.findByCartId(cartId)).thenReturn(Flux.just(cartLine));
+        when(itemRepository.findAllById(any(Iterable.class))).thenReturn(Flux.just(item));
+        when(paymentClient.withdraw(anyLong(), anyString())).thenReturn(Mono.just(false));
+        StepVerifier.create(orderService.createOrder(cartId))
+                .expectError(RuntimeException.class)
+                .verify();
+
+        verify(paymentClient).withdraw(eq(expectedTotal), eq("ILS"));
+        verify(cartLineRepository, never()).deleteByCartId(cartId);
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void getAllOrders_returnsOrdersWithItemsAndTotal() {
         Order order = new Order(orderId);
-        OrderItem orderItem = new OrderItem(1L, orderId, itemId, 2);
+        OrderItem oi = new OrderItem(1L, orderId, itemId, 2);
 
         when(orderRepository.findAll()).thenReturn(Flux.just(order));
-        when(orderItemRepository.findByOrderId(orderId)).thenReturn(Flux.just(orderItem));
-
+        when(orderItemRepository.findByOrderId(orderId)).thenReturn(Flux.just(oi));
         ItemDto dto = modelMapper.map(item, ItemDto.class);
         when(itemQueryService.getItemById(itemId)).thenReturn(Mono.just(dto));
-        
         StepVerifier.create(orderService.getAllOrders())
-            .assertNext(res -> {
-                assertThat(res.getId()).isEqualTo(orderId);
-                assertThat(res.getItems()).hasSize(1);
-                assertThat(res.getItems().get(0).getId()).isEqualTo(itemId);
-                assertThat(res.getItems().get(0).getCount()).isEqualTo(2);
-                assertThat(res.getTotal()).isEqualTo(600);
-            })
-            .verifyComplete();
+                .assertNext(res -> {
+                    assertThat(res.getId()).isEqualTo(orderId);
+                    assertThat(res.getItems()).hasSize(1);
+                    assertThat(res.getItems().get(0).getId()).isEqualTo(itemId);
+                    assertThat(res.getItems().get(0).getCount()).isEqualTo(2);
+                    assertThat(res.getTotal()).isEqualTo(600);
+                })
+                .verifyComplete();
     }
 
     @Test
-    void shouldGetOrderByIdWithItems() {
+    void getOrderById_returnsOrderWithItemsAndTotal() {
         Order order = new Order(orderId);
-        OrderItem orderItem = new OrderItem(1L, orderId, itemId, 2);
+        OrderItem oi = new OrderItem(1L, orderId, itemId, 2);
 
         when(orderRepository.findById(orderId)).thenReturn(Mono.just(order));
-        when(orderItemRepository.findByOrderId(orderId)).thenReturn(Flux.just(orderItem));
-
+        when(orderItemRepository.findByOrderId(orderId)).thenReturn(Flux.just(oi));
         ItemDto dto = modelMapper.map(item, ItemDto.class);
         when(itemQueryService.getItemById(itemId)).thenReturn(Mono.just(dto));
-
         StepVerifier.create(orderService.getOrderById(orderId))
-            .assertNext(res -> {
-                assertThat(res.getId()).isEqualTo(orderId);
-                assertThat(res.getItems()).hasSize(1);
-                assertThat(res.getItems().get(0).getId()).isEqualTo(itemId);
-                assertThat(res.getItems().get(0).getCount()).isEqualTo(2);
-                assertThat(res.getTotal()).isEqualTo(600);
-            })
-            .verifyComplete();
+                .assertNext(res -> {
+                    assertThat(res.getId()).isEqualTo(orderId);
+                    assertThat(res.getItems()).hasSize(1);
+                    assertThat(res.getItems().get(0).getId()).isEqualTo(itemId);
+                    assertThat(res.getItems().get(0).getCount()).isEqualTo(2);
+                    assertThat(res.getTotal()).isEqualTo(600);
+                })
+                .verifyComplete();
     }
 }

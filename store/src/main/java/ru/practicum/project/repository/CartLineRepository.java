@@ -10,4 +10,5 @@ public interface CartLineRepository extends R2dbcRepository<CartLine, Long> {
 	
 	Flux<CartLine> findByCartId(Long cartId);
 	Mono<CartLine> findByCartIdAndItemId(Long cartId, Long itemId);
+	Mono<Long> deleteByCartId(Long cartId);
 }
