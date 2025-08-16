@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import lombok.AllArgsConstructor;
 import reactor.core.publisher.Mono;
 import ru.practicum.project.dto.ItemDto;
-import ru.practicum.project.exeption.ItemNotFoundException;
+import ru.practicum.project.exсeption.ItemNotFoundException;
 import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.ItemRepository;
 

@@ -17,7 +17,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import ru.practicum.project.dto.ItemDto;
-import ru.practicum.project.exeption.EmptyCartException;
+import ru.practicum.project.exсeption.EmptyCartException;
 import ru.practicum.project.model.CartLine;
 import ru.practicum.project.model.Item;
 import ru.practicum.project.model.Order;
