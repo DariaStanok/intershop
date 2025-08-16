@@ -8,7 +8,7 @@ public interface OrderService {
 
 	Mono<OrderDto> createOrder(Long cartId);
 
-	Flux<OrderDto> getAllOrders();
-
 	Mono<OrderDto> getOrderById(Long id);
+
+	Flux<OrderDto> getAllOrders();
 }
