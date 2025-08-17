@@ -1,0 +1,62 @@
+package ru.practicum.project.dao;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
+import org.springframework.context.annotation.Import;
+
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
+import ru.practicum.project.config.TestDataLoaderConfig;
+import ru.practicum.project.config.TestSchemaInitializer;
+import ru.practicum.project.repository.OrderItemRepository;
+import ru.practicum.project.repository.OrderRepository;
+
+@DataR2dbcTest(properties = {
+	    "spring.r2dbc.init.enabled=false",
+	    "spring.sql.init.mode=never"
+	})
+@Import({TestSchemaInitializer.class, TestDataLoaderConfig.class})
+class OrderRepositoryTest {
+
+	@Autowired
+	private OrderRepository orderRepository;
+
+	@Autowired
+	private OrderItemRepository orderItemRepository;
+
+	@BeforeEach
+	void init(@Autowired @Qualifier("initializeSchema") Mono<Void> schema,
+			@Autowired @Qualifier("preloadTestData") Mono<Void> preload) {
+		StepVerifier.create(schema.then(preload)).verifyComplete();
+	}
+
+	@Test
+	void testFindById() {
+		StepVerifier.create(orderRepository.findAll().next())
+				.assertNext(order -> assertThat(order.getId()).isNotNull())
+				.verifyComplete();
+
+		StepVerifier.create(orderRepository.findAll().next()
+				.flatMap(o -> orderItemRepository.findByOrderId(o.getId()).collectList()))
+		        .assertNext(items -> {
+					assertThat(items).hasSize(2);
+					assertThat(items.get(0).getCount()).isPositive();
+				}).verifyComplete();
+	}
+
+	@Test
+	void testFindAll() {
+		StepVerifier.create(orderRepository.findAll().collectList())
+					.assertNext(orders -> assertThat(orders).hasSize(1))
+				    .verifyComplete();
+
+		StepVerifier
+				.create(orderRepository.findAll().next().flatMapMany(o -> orderItemRepository.findByOrderId(o.getId())))
+				.expectNextCount(2).verifyComplete();
+	}
+}

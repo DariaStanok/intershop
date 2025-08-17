@@ -11,4 +11,8 @@ public interface OrderService {
 	Mono<OrderDto> getOrderById(Long id);
 
 	Flux<OrderDto> getAllOrders();
+	
+	Flux<OrderDto> getMyOrders();
+	
+	Mono<OrderDto> getMyOrderById(Long id);
 }

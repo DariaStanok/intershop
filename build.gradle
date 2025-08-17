@@ -1,30 +1,26 @@
 plugins {
     id 'org.springframework.boot' version '3.5.3' apply false
     id 'io.spring.dependency-management' version '1.1.7' apply false
-    id 'java'
     id 'eclipse'
 }
 
 allprojects {
     group = 'ru.practicum.project'
     version = '0.0.3-SNAPSHOT'
-
-    repositories {
-        mavenCentral()
-    }
+    repositories { mavenCentral() }
 }
 
 subprojects {
     apply plugin: 'java'
     apply plugin: 'io.spring.dependency-management'
 
-    java {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
-        }
-    }
+    java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+    tasks.withType(Test).configureEach { useJUnitPlatform() }
 
-    tasks.named('test') {
-        useJUnitPlatform()
+    // ваш хак с r2dbc, если нужен всем модулям
+    configurations.all {
+        resolutionStrategy.dependencySubstitution {
+            substitute module('io.r2dbc:r2dbc-postgresql') using module('org.postgresql:r2dbc-postgresql:1.0.5.RELEASE')
+        }
     }
 }

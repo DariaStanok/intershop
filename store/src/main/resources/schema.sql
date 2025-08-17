@@ -24,3 +24,21 @@ CREATE TABLE IF NOT EXISTS cart_lines (
   cart_id BIGINT,
   item_id BIGINT
 );
+
+CREATE TABLE IF NOT EXISTS app_user (
+  id BIGSERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  enabled BOOLEAN NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_role (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_user_roles (
+  user_id BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  role_id BIGINT NOT NULL REFERENCES app_role(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, role_id)
+);

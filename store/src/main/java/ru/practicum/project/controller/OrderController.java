@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
+import ru.practicum.project.exсeption.ResponseStatusException;
 import ru.practicum.project.service.OrderService;
 
 @Controller
@@ -26,26 +27,25 @@ public class OrderController {
 	}
 
 	@GetMapping
-	public Mono<String> getOrders(Model model) {
-		return orderService.getAllOrders()
-				.collectList()
-				.map(orderList -> {
-					model.addAttribute("orders", orderList);
-					return "orders";
-				});
-	}
+    public Mono<String> getOrders(Model model) {
+        return orderService.getMyOrders()
+                .collectList()
+                .doOnNext(list -> model.addAttribute("orders", list))
+                .thenReturn("orders");
+    }
 
-	@GetMapping("/{orderId}")
-	public Mono<String> getOrderById(
-			@PathVariable("orderId") Long id,
-			@RequestParam(name = "newOrder", defaultValue = "false") boolean newOrder,
-			Model model
-	) {
-		return orderService.getOrderById(id)
-				.map(order -> {
-					model.addAttribute("order", order);
-					model.addAttribute("newOrder", newOrder);
-					return "order";
-				});
-	}
+    @GetMapping("/{orderId}")
+    public Mono<String> getOrderById(
+            @PathVariable("orderId") Long id,
+            @RequestParam(name = "newOrder", defaultValue = "false") boolean newOrder,
+            Model model
+    ) {
+    	return orderService.getMyOrderById(id)
+    	        .map(order -> {
+    	            model.addAttribute("order", order);
+    	            model.addAttribute("newOrder", newOrder);
+    	            return "order";
+    	        })
+    	        .switchIfEmpty(Mono.<String>error(new ResponseStatusException()));
+    }
 }

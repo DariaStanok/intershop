@@ -1,0 +1,49 @@
+plugins {
+    id 'org.springframework.boot' version '3.5.3'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'java-library'
+    id 'eclipse'
+}
+
+group = 'ru.practicum.project'
+version = '0.0.4-SNAPSHOT'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute module('io.r2dbc:r2dbc-postgresql') using module('org.postgresql:r2dbc-postgresql:1.0.5.RELEASE')
+    }
+}
+
+dependencies {
+    api 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.security:spring-security-crypto'
+
+    // если сюда перенесёшь OAuth2 client-хелперы, раскомментируй:
+    // api 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation('org.springframework.boot:spring-boot-starter-test') {
+        exclude group: 'org.springframework', module: 'spring-webmvc'
+        exclude group: 'org.mockito', module: 'mockito-core'
+    }
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'io.projectreactor:reactor-test'
+    testImplementation 'org.mockito:mockito-junit-jupiter'
+
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(Test).configureEach { useJUnitPlatform() }
+
+bootJar { enabled = false }
+jar { enabled = true }

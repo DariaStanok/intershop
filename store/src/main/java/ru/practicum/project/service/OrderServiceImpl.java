@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 import org.modelmapper.ModelMapper;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,14 +39,16 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     @Override
     public Mono<OrderDto> createOrder(Long cartId) {
-    	 return cartLineRepository.findByCartId(cartId)
-    	            .collectList()
-    	            .flatMap(lines -> {
-    	                if (lines.isEmpty()) {
-    	                    return Mono.error(new EmptyCartException());
-    	                }
-    	                return createOrderForLines(cartId, lines);
-    	            });
+        return currentUsername().flatMap(username ->
+            cartLineRepository.findByCartId(cartId)
+                .collectList()
+                .flatMap(lines -> {
+                    if (lines.isEmpty()) {
+                        return Mono.error(new EmptyCartException());
+                    }
+                    return createOrderForLines(cartId, lines, username);
+                })
+        );
     }
     
     @Override
@@ -64,6 +67,28 @@ public class OrderServiceImpl implements OrderService {
                 .collectList()
                 .flatMap(orderItems -> toOrderDto(order.getId(), orderItems))
             );
+    }
+    
+    @Override
+    public Flux<OrderDto> getMyOrders() {
+        return currentUsername().flatMapMany(username ->
+            orderRepository.findByUsername(username)
+                .flatMap(order -> orderItemRepository.findByOrderId(order.getId())
+                    .collectList()
+                    .flatMap(items -> toOrderDto(order.getId(), items))
+                )
+        );
+    }
+
+    @Override
+    public Mono<OrderDto> getMyOrderById(Long id) {
+        return currentUsername().flatMap(username ->
+            orderRepository.findByIdAndUsername(id, username)
+                .flatMap(order -> orderItemRepository.findByOrderId(order.getId())
+                    .collectList()
+                    .flatMap(items -> toOrderDto(order.getId(), items))
+                )
+        );
     }
 		
 	private List<Long> extractItemIds(List<CartLine> lines) {
@@ -96,42 +121,47 @@ public class OrderServiceImpl implements OrderService {
 		            .then();
 	}
 
-	private Mono<OrderDto> createOrderTransaction(List<CartLine> lines, Map<Long, Item> itemsById) {
-	    return Mono.defer(() ->
-        orderRepository.save(new Order())
-            .flatMap(order -> Flux.fromIterable(lines)
-                .concatMap(line -> orderItemRepository.save(
-                    new OrderItem(null, order.getId(), line.getItemId(), line.getQuantity())
-                ))
-                .collectList()
-                .map(orderItems -> {
-                    var itemDtos = orderItems.stream()
-                        .map(oi -> {
-                            Item item = itemsById.get(oi.getItemId());
-                            ItemDto dto = modelMapper.map(item, ItemDto.class);
-                            dto.setCount(oi.getCount());
-                            return dto;
-                        })
-                        .toList();
-                    int total = itemDtos.stream().mapToInt(i -> i.getPrice() * i.getCount()).sum();
-                    return new OrderDto(order.getId(), itemDtos, total);
-                })
-            )
-	    );
+	private Mono<OrderDto> createOrderTransaction(List<CartLine> lines, Map<Long, Item> itemsById, String username) {
+	    Order order = new Order();
+	    order.setUsername(username);
+	    return orderRepository.save(order)
+	        .flatMap(saved ->
+	            Flux.fromIterable(lines)
+	                .concatMap(line -> orderItemRepository.save(
+	                    new OrderItem(null, saved.getId(), line.getItemId(), line.getQuantity())
+	                ))
+	                .collectList()
+	                .map(orderItems -> {
+	                    var itemDtos = orderItems.stream()
+	                        .map(oi -> {
+	                            Item item = itemsById.get(oi.getItemId());
+	                            ItemDto dto = modelMapper.map(item, ItemDto.class);
+	                            dto.setCount(oi.getCount());
+	                            return dto;
+	                        })
+	                        .toList();
+
+	                    int total = itemDtos.stream()
+	                        .mapToInt(i -> i.getPrice() * i.getCount())
+	                        .sum();
+
+	                    return new OrderDto(saved.getId(), itemDtos, total);
+	                })
+	           );     
 	}
 
 	private Mono<Void> cleanUpCart(Long cartId) {
 		 return cartLineRepository.deleteByCartId(cartId).then();
 	}
 	
-	private Mono<OrderDto> createOrderForLines(Long cartId, List<CartLine> lines) {
+	private Mono<OrderDto> createOrderForLines(Long cartId, List<CartLine> lines,  String username) {
 	    List<Long> itemIds = extractItemIds(lines);
-
 	    return fetchItems(itemIds)
-	        .flatMap(itemsById -> validateAndCalculateTotal(lines, itemsById)
-	            .flatMap(total -> processPayment(total)
-	            	    .then(Mono.defer(() -> createOrderTransaction(lines, itemsById)))
-	                    .flatMap(orderDto -> cleanUpCart(cartId).thenReturn(orderDto))
+	    		.flatMap(itemsById ->
+	            validateAndCalculateTotal(lines, itemsById)
+	                .flatMap(total -> processPayment(total)
+	                    .then(createOrderTransaction(lines, itemsById, username))
+	                    .flatMap(dto -> cleanUpCart(cartId).thenReturn(dto))
 	                )
 	        );
 	}
@@ -154,7 +184,10 @@ public class OrderServiceImpl implements OrderService {
 	        });
 	}
 
-
+	private Mono<String> currentUsername() {
+	    return ReactiveSecurityContextHolder.getContext()
+	        .map(ctx -> ctx.getAuthentication().getName());
+	}
 
 
 }
