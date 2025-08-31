@@ -1,44 +1,37 @@
 package ru.practicum.project.dao;
 
-import org.junit.jupiter.api.BeforeEach;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 
-import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
-import ru.practicum.project.config.TestDataLoaderConfig;
-import ru.practicum.project.config.TestSchemaInitializer;
+import ru.practicum.project.config.PostgresR2dbcTestBase;
+import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.ItemRepository;
 
-@DataR2dbcTest(properties = {
-	    "spring.r2dbc.init.enabled=false",
-	    "spring.sql.init.mode=never"
-	})
-@Import({TestSchemaInitializer.class, TestDataLoaderConfig.class})
-class ItemRepositoryTest {
+@DataR2dbcTest
+@ActiveProfiles("test")
+class ItemRepositoryTest extends PostgresR2dbcTestBase {
 
-	    @Autowired
-	    private ItemRepository itemRepository;
+    @Autowired ItemRepository itemRepository;
 
-	    @BeforeEach
-	    void init(@Autowired @Qualifier("initializeSchema") Mono<Void> schema,
-	              @Autowired @Qualifier("preloadTestData") Mono<Void> preload) {
-	        StepVerifier.create(schema.then(preload)).verifyComplete();
-	    }
+    @Test
+    void findByTitleContainingIgnoreCase_returnsMatching() {
+        Item a = new Item(null, "Smartphone", "d", 2000, "img", 0);
+        Item b = new Item(null, "SmartWatch", "d", 1000, "img", 0);
+        Item c = new Item(null, "Book", "d", 100, "img", 0);
 
-	    @Test
-	    void testFindByTitleReturnsMatchingItems() {
-	        StepVerifier.create(itemRepository.findByTitleContainingIgnoreCase("sMaRt"))
-	            .expectNextCount(2) 
-	            .verifyComplete();
-	    }
-
-	    @Test
-	    void testFindByTitleReturnsEmpty() {
-	        StepVerifier.create(itemRepository.findByTitleContainingIgnoreCase("Laptop"))
-	            .verifyComplete();
-	    }
-	}
+        StepVerifier.create(
+            itemRepository.saveAll(Flux.just(a,b,c)).thenMany(
+                itemRepository.findByTitleContainingIgnoreCase("smart").collectList()
+            )
+        ).assertNext(list -> {
+            assertThat(list).extracting(Item::getTitle)
+                .containsExactlyInAnyOrder("Smartphone", "SmartWatch");
+        }).verifyComplete();
+    }
+}

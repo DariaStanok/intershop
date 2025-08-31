@@ -10,7 +10,7 @@ import ru.practicum.project.model.Order;
 @Repository
 public interface OrderRepository extends R2dbcRepository <Order, Long>{
 	
-	Flux<Order> findByUsername(String username);
-	Mono<Order> findByIdAndUsername(Long id, String username);
+	Flux<Order> findByUserName(String userName);
+	Mono<Order> findByIdAndUserName(Long id, String userName);
 
 }

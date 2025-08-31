@@ -9,6 +9,7 @@ plugins {
 group = 'ru.practicum.project'
 version = '0.0.3-SNAPSHOT'
 
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -16,15 +17,32 @@ java {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'org.springframework.boot:spring-boot-starter-validation' 
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'io.swagger.core.v3:swagger-annotations:2.2.22' 
-    implementation 'org.openapitools:jackson-databind-nullable:0.2.6'
+  implementation 'org.springframework.boot:spring-boot-starter-webflux'
+  implementation 'org.springframework.boot:spring-boot-starter-validation'
+  implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  implementation 'org.springframework.boot:spring-boot-starter-security'
+  implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+  implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+  implementation 'io.swagger.core.v3:swagger-annotations:2.2.22'
+  implementation 'org.openapitools:jackson-databind-nullable:0.2.6'
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'io.projectreactor:reactor-test'
-    testImplementation 'org.mockito:mockito-junit-jupiter'
+  runtimeOnly 'org.postgresql:r2dbc-postgresql'
+
+  compileOnly 'org.projectlombok:lombok'
+  annotationProcessor 'org.projectlombok:lombok'
+
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+  testImplementation 'io.projectreactor:reactor-test'
+  testImplementation 'org.mockito:mockito-junit-jupiter'
+  testImplementation 'org.mockito:mockito-inline'
+
+  testImplementation 'org.testcontainers:junit-jupiter'
+  testImplementation 'org.testcontainers:postgresql'
+  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+
+  testImplementation 'org.springframework.security:spring-security-test'
+
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 springBoot {
@@ -52,5 +70,8 @@ sourceSets.main.java.srcDirs += "$buildDir/generated/src/main/java"
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+tasks.named('bootJar') {
+    archiveFileName = 'payment-service.jar'
 }
 tasks.named('jar') { enabled = false }

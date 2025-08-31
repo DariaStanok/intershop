@@ -1,43 +1,55 @@
 package ru.practicum.project.payment.service;
 
-import java.util.concurrent.atomic.AtomicLong;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import reactor.core.publisher.Mono;
 import ru.practicum.project.payment.exception.BadAmountException;
 import ru.practicum.project.payment.exception.InsufficientFundsException;
+import ru.practicum.project.payment.model.Balance;
+import ru.practicum.project.payment.repository.BalanceRepository;
 
 @Service
 public class PaymentServiceImpl implements PaymentService {
 
-	private final AtomicLong balance;
+    private final BalanceRepository balances;
+    private final long initialBalance;
 
-	public PaymentServiceImpl(@Value("${payments.initial-balance:50000}") long initialBalance) {
-		this.balance = new AtomicLong(initialBalance);
-	}
+    public PaymentServiceImpl(BalanceRepository balances,
+                              @Value("${payments.initial-balance:50000}") long initialBalance) {
+        this.balances = balances;
+        this.initialBalance = initialBalance;
+    }
 
-	@Override
-	public Mono<Long> deposit(long amount, String currency) {
-		if (amount <= 0) {
-			return Mono.error(new BadAmountException());
-		}
-		return Mono.fromSupplier(() -> balance.addAndGet(amount));
-	}
+    @Override
+    @Transactional
+    public Mono<Long> deposit(long amount, String currency, String username) {
+    	    return balances.findByUsernameAndCurrency(username, currency)
+    	        .flatMap(b -> {
+    	            b.setAmount(b.getAmount() + amount);
+    	            return balances.save(b).map(Balance::getAmount);
+    	        })
+    	        .switchIfEmpty(
+    	            Mono.defer(() ->
+    	                balances.save(new Balance(null, username, currency, initialBalance))
+    	                        .map(Balance::getAmount)
+    	            )
+    	        );
+    }
 
-	@Override
-	public Mono<Long> withdraw(long amount, String currency) {
-		if (amount <= 0) {
-			return Mono.error(new BadAmountException());
-		}
-		return Mono.defer(() -> {
-			long current = balance.get();
-			if (current < amount) {
-				return Mono.error(new InsufficientFundsException());
-			}
-			long next = balance.addAndGet(-amount);
-			return Mono.just(next);
-		});
-	}
+    @Override
+    @Transactional
+    public Mono<Long> withdraw(long amount, String currency, String username) {
+        if (amount <= 0) return Mono.error(new BadAmountException());
+        return balances.findByUsernameAndCurrency(username, currency)
+                .switchIfEmpty(Mono.error(new InsufficientFundsException()))
+                .flatMap(b -> {
+                    if (b.getAmount() < amount) {
+                        return Mono.error(new InsufficientFundsException());
+                    }
+                    b.setAmount(b.getAmount() - amount);
+                    return balances.save(b).map(Balance::getAmount);
+                });
+    }
 }

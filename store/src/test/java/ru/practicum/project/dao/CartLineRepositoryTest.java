@@ -5,58 +5,56 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 
-import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
-import ru.practicum.project.config.TestDataLoaderConfig;
-import ru.practicum.project.config.TestSchemaInitializer;
+import ru.practicum.project.config.PostgresR2dbcTestBase;
+import ru.practicum.project.model.Cart;
+import ru.practicum.project.model.CartLine;
+import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.CartLineRepository;
+import ru.practicum.project.repository.CartRepository;
 import ru.practicum.project.repository.ItemRepository;
 
-@DataR2dbcTest(properties = {
-		  "spring.r2dbc.init.enabled=false",
-		  "spring.sql.init.mode=never"
-		})
-@Import({TestSchemaInitializer.class, TestDataLoaderConfig.class})
-class CartLineRepositoryTest {
+@DataR2dbcTest
+@ActiveProfiles("test")
+class CartLineRepositoryTest extends PostgresR2dbcTestBase {
 
-	@Autowired
-    private CartLineRepository cartLineRepository;
+    @Autowired CartLineRepository cartLineRepository;
+    @Autowired CartRepository cartRepository;
+    @Autowired ItemRepository itemRepository;
 
-    private Long item1Id;
+    Long cartId;
+    Long itemId;
 
     @BeforeEach
-    void init(@Autowired @Qualifier("initializeSchema") Mono<Void> schema,
-              @Autowired @Qualifier("preloadTestData") Mono<Void> preload,
-              @Autowired ItemRepository itemRepository) {
-        StepVerifier.create(schema.then(preload)).verifyComplete();
-        this.item1Id = itemRepository.findAll()
-            .filter(i -> i.getTitle().equals("Smartphone"))
-            .map(i -> i.getId())
-            .blockFirst(); //
-    }
+    void seed() {
+        Cart cart = new Cart(null, "alice");
+        Item item = new Item(null, "Phone", "d", 1000, "img", 0);
 
+        cartId = cartRepository.save(cart).map(Cart::getId).block();
+        itemId = itemRepository.save(item).map(Item::getId).block();
 
-    @Test
-    void testFindByCartIdReturnsCartLines() {
-        StepVerifier.create(cartLineRepository.findByCartId(1L))
-            .expectNextCount(2)
-            .verifyComplete();
+        cartLineRepository.save(new CartLine(null, 2, cartId, itemId)).block();
     }
 
     @Test
-    void testFindByCartIdAndItemIdReturnsCorrectCartLine() {
-        StepVerifier.create(cartLineRepository.findByCartIdAndItemId(1L, item1Id))
-            .assertNext(cartLine -> assertThat(cartLine.getQuantity()).isEqualTo(1))
-            .verifyComplete();
-    }
+    void findByCartId_and_findByCartIdAndItemId_and_deleteByCartId() {
+        StepVerifier.create(cartLineRepository.findByCartId(cartId).collectList())
+            .assertNext(list -> {
+                assertThat(list).hasSize(1);
+                assertThat(list.get(0).getQuantity()).isEqualTo(2);
+            }).verifyComplete();
 
-    @Test
-    void testFindByCartIdAndItemIdReturnsEmpty() {
-        StepVerifier.create(cartLineRepository.findByCartIdAndItemId(1L, 999L))
+        StepVerifier.create(cartLineRepository.findByCartIdAndItemId(cartId, itemId))
+            .assertNext(cl -> assertThat(cl.getQuantity()).isEqualTo(2))
             .verifyComplete();
+
+        StepVerifier.create(cartLineRepository.deleteByCartId(cartId))
+            .expectNext(1L) 
+            .verifyComplete();
+
+        StepVerifier.create(cartLineRepository.findByCartId(cartId)).verifyComplete();
     }
 }

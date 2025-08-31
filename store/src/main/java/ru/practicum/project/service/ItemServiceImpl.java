@@ -11,11 +11,12 @@ import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
 import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.SortType;
-import ru.practicum.project.exсeption.ItemNotFoundException;
+import ru.practicum.project.exception.ItemNotFoundException;
 import ru.practicum.project.model.CartLine;
 import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.CartLineRepository;
 import ru.practicum.project.repository.ItemRepository;
+import ru.practicum.project.security.config.CartAccessGuard;
 import ru.practicum.project.util.ViewUtils;
 
 @Service
@@ -26,6 +27,7 @@ public class ItemServiceImpl implements ItemService {
 	private final CartLineRepository cartLineRepository;
     private final ModelMapper modelMapper;
     private final ItemQueryService itemQueryService;
+    private final CartAccessGuard cartAccessGuard;
     
 
 	@Override
@@ -67,8 +69,9 @@ public class ItemServiceImpl implements ItemService {
 		if (cartId == null) {
 			return Mono.just(Map.of());
 		}
-		return cartLineRepository.findByCartId(cartId)
-				.collectMap(CartLine::getItemId, CartLine::getQuantity);
+		return cartAccessGuard.requireOwner(cartId)
+				.then(cartLineRepository.findByCartId(cartId)
+						.collectMap(CartLine::getItemId, CartLine::getQuantity));
 	}
 
 	private List<List<ItemDto>> toItemDtoRows(List<Item> items, Map<Long, Integer> cartMap) {

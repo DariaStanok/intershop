@@ -1,13 +1,16 @@
 package ru.practicum.project.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
+import java.util.Comparator;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.modelmapper.ModelMapper;
@@ -17,97 +20,125 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.SortType;
-import ru.practicum.project.exсeption.ItemNotFoundException;
+import ru.practicum.project.exception.ItemNotFoundException;
 import ru.practicum.project.model.CartLine;
 import ru.practicum.project.model.Item;
 import ru.practicum.project.repository.CartLineRepository;
 import ru.practicum.project.repository.ItemRepository;
+import ru.practicum.project.security.config.CartAccessGuard;
 
 @ExtendWith(MockitoExtension.class)
 class ItemServiceImplTest {
 
-    @Mock private ItemRepository itemRepository;
-    @Mock private CartLineRepository cartLineRepository;
-    @Mock private ItemQueryService itemQueryService;
+    @Mock
+    private ItemRepository itemRepository;
+
+    @Mock
+    private CartLineRepository cartLineRepository;
 
     private final ModelMapper modelMapper = new ModelMapper();
+
+    @Mock
+    private ItemQueryService itemQueryService;
+
+    @Mock
+    private CartAccessGuard cartAccessGuard;
+
+    @InjectMocks
     private ItemServiceImpl itemService;
+
+    private Item item1;
+    private Item item2;
+    private ItemDto dto1;
 
     @BeforeEach
     void setUp() {
-        itemService = new ItemServiceImpl(itemRepository, cartLineRepository, modelMapper, itemQueryService);
+        itemService = new ItemServiceImpl(itemRepository, cartLineRepository, modelMapper, itemQueryService, cartAccessGuard);
+
+        item1 = new Item();
+        item1.setId(1L);
+        item1.setTitle("Alpha");
+        item1.setPrice(200);
+
+        item2 = new Item();
+        item2.setId(2L);
+        item2.setTitle("Beta");
+        item2.setPrice(100);
+
+        dto1 = new ItemDto();
+        dto1.setId(1L);
+        dto1.setTitle("Alpha");
+        dto1.setPrice(200);
     }
 
     @Test
-    void shouldReturnItemDtoById() {
-        Item item = new Item(1L, "Phone", "Desc", 999, "img.jpg", 0);
-        ItemDto dto = modelMapper.map(item, ItemDto.class);
-        when(itemQueryService.getItemById(1L)).thenReturn(Mono.just(dto));
+    void getItems_returnsPagedSortedAndWithCounts() {
+        when(itemRepository.findByTitleContainingIgnoreCase("a"))
+            .thenReturn(Flux.just(item1, item2) 
+                .sort(Comparator.comparing(Item::getId))); 
+        Long cartId = 10L;
+        when(cartAccessGuard.requireOwner(cartId)).thenReturn(Mono.empty());
+        when(cartLineRepository.findByCartId(cartId))
+            .thenReturn(Flux.just(
+                new CartLine(100L, 3, cartId, 1L), 
+                new CartLine(101L, 1, cartId, 2L) 
+            ));
 
-        StepVerifier.create(itemService.getItemById(1L, 2))
-            .assertNext(res -> {
-                assertThat(res.getId()).isEqualTo(1L);
-                assertThat(res.getCount()).isEqualTo(2);
-                assertThat(res.getTitle()).isEqualTo("Phone");
+   
+        StepVerifier.create(itemService.getItems("a", SortType.PRICE, 1, 2, cartId))
+            .assertNext(rows -> {
+                assertThat(rows).hasSize(1);
+                List<ItemDto> firstRow = rows.get(0);
+                assertThat(firstRow).hasSize(2);
+                assertThat(firstRow.get(0).getId()).isEqualTo(2L);
+                assertThat(firstRow.get(0).getCount()).isEqualTo(1);
+                assertThat(firstRow.get(1).getId()).isEqualTo(1L);
+                assertThat(firstRow.get(1).getCount()).isEqualTo(3);
             })
             .verifyComplete();
     }
 
     @Test
-    void shouldThrowWhenItemNotFound() {
-        when(itemQueryService.getItemById(99L)).thenReturn(Mono.empty());
-
-        StepVerifier.create(itemService.getItemById(99L, 1))
+    void getItems_emptyResult_throwsItemNotFound() {
+        when(itemRepository.findByTitleContainingIgnoreCase("zzz")).thenReturn(Flux.empty());
+        StepVerifier.create(itemService.getItems("zzz", SortType.NO, 1, 10, null))
             .expectError(ItemNotFoundException.class)
             .verify();
     }
 
     @Test
-    void shouldReturnPagedAndSortedItemRows() {
-        Item item1 = new Item(1L, "A", "desc", 100, "img1", 0);
-        Item item2 = new Item(2L, "B", "desc", 200, "img2", 0);
-        Item item3 = new Item(3L, "C", "desc", 150, "img3", 0);
-        Item item4 = new Item(4L, "D", "desc", 300, "img4", 0);
+    void getItems_withoutCartId_setsCountToZero() {
+        when(itemRepository.findByTitleContainingIgnoreCase("a"))
+            .thenReturn(Flux.just(item1, item2));
 
-        when(itemRepository.findByTitleContainingIgnoreCase(""))
-            .thenReturn(Flux.fromIterable(List.of(item1, item2, item3, item4)));
-
-        when(cartLineRepository.findByCartId(1L))
-            .thenReturn(Flux.just(
-                new CartLine(null, 2, 1L, 1L),
-                new CartLine(null, 1, 1L, 3L)
-            ));
-
-        StepVerifier.create(itemService.getItems("", SortType.PRICE, 1, 4, 1L))
+        StepVerifier.create(itemService.getItems("a", SortType.ABC, 1, 5, null))
             .assertNext(rows -> {
-                assertThat(rows).hasSize(2);
-                assertThat(rows.get(0)).hasSize(3);
-                assertThat(rows.get(1)).hasSize(1);
+                List<ItemDto> all = rows.stream().flatMap(List::stream).toList();
+                assertThat(all).hasSize(2);
+                assertThat(all.get(0).getCount()).isZero();
+                assertThat(all.get(1).getCount()).isZero();
             })
             .verifyComplete();
     }
 
     @Test
-    void shouldReturnEmptyMapWhenCartIdIsNull() {
-        Item item = new Item(1L, "Book", "desc", 100, "img", 0);
-        when(itemRepository.findByTitleContainingIgnoreCase("book"))
-            .thenReturn(Flux.just(item));
+    void getItemById_returnsDtoWithCount() {
+        when(itemQueryService.getItemById(1L)).thenReturn(Mono.just(dto1));
 
-        StepVerifier.create(itemService.getItems("book", SortType.NO, 1, 3, null))
-            .assertNext(rows -> {
-                assertThat(rows).hasSize(1);
-                assertThat(rows.get(0)).hasSize(1);
-                assertThat(rows.get(0).get(0).getCount()).isEqualTo(0);
+        StepVerifier.create(itemService.getItemById(1L, 5))
+            .assertNext(dto -> {
+                assertThat(dto.getId()).isEqualTo(1L);
+                assertThat(dto.getTitle()).isEqualTo("Alpha");
+                assertThat(dto.getCount()).isEqualTo(5);
             })
             .verifyComplete();
     }
 
     @Test
-    void shouldThrowWhenNoItemsFoundAfterFiltering() {
-        when(itemRepository.findByTitleContainingIgnoreCase("xyz"))
-            .thenReturn(Flux.empty());
+    void getItemById_whenServiceEmpty_throwsItemNotFound() {
+        when(itemQueryService.getItemById(anyLong())).thenReturn(Mono.empty());
 
-        StepVerifier.create(itemService.getItems("xyz", SortType.NO, 1, 3, null))
+        StepVerifier.create(itemService.getItemById(1L, 1))
             .expectError(ItemNotFoundException.class)
             .verify();
     }

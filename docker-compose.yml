@@ -12,7 +12,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,7 +24,21 @@ services:
     container_name: intershop-redis
     restart: always
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
+
+  auth-server:
+    image: eclipse-temurin:21-jre
+    container_name: intershop-auth-server
+    working_dir: /app
+    volumes:
+      - ./authorization-server/build/libs:/app/libs:ro
+    command:  ["sh", "-c", "ls -l /app/libs && java -jar /app/libs/authorization-server.jar"]
+    environment:
+      SERVER_PORT: "${AUTH_PORT}"
+      SPRING_SECURITY_OAUTH2_AUTHORIZATIONSERVER_ISSUER_URL: "${AUTH_ISSUER_URL}"
+    ports:
+      - "${AUTH_PORT}:${AUTH_PORT}"
+    restart: unless-stopped
 
   payment-service:
     image: eclipse-temurin:21-jre
@@ -32,12 +46,21 @@ services:
     working_dir: /app
     volumes:
       - ./payment-service/build/libs:/app/libs:ro
-    command: ["sh","-c","java -jar /app/libs/*.jar"]
+    command: ["sh", "-c", "ls -l /app/libs && java -jar /app/libs/payment-service.jar"]
     environment:
-      SERVER_PORT: "8080"
-      PAYMENTS_INITIAL_BALANCE: "50000"
+      SERVER_PORT: "${PAYMENT_PORT}"
+      PAYMENTS_INITIAL_BALANCE: "${PAYMENTS_INITIAL_BALANCE}"
+      SPRING_R2DBC_URL: r2dbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      SPRING_R2DBC_USERNAME: ${POSTGRES_USER}
+      SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${AUTH_ISSUER_URL}
     ports:
-      - "8081:8080"
+      - "${PAYMENT_PORT}:${PAYMENT_PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+      auth-server:
+        condition: service_started
     restart: unless-stopped
 
   store:
@@ -46,22 +69,32 @@ services:
     working_dir: /app
     volumes:
       - ./store/build/libs:/app/libs:ro
-    command: ["sh","-c","java -jar /app/libs/*.jar"]
+    command: ["sh", "-c", "ls -l /app/libs && java -jar /app/libs/store.jar"]
     environment:
-      PAYMENTS_BASE_URL: http://payment-service:8080
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: "6379"
-      SPRING_R2DBC_URL: r2dbc:postgresql://db:5432/${POSTGRES_DB}
+      SERVER_PORT: "${STORE_PORT}"
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT}
+      SPRING_R2DBC_URL: r2dbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
       SPRING_R2DBC_USERNAME: ${POSTGRES_USER}
       SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD}
+      PAYMENTS_BASE_URL: ${PAYMENTS_BASE_URL}
+
+      # OAuth2 Client Credentials
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT_CLIENT_CLIENT_ID: ${CLIENT_ID}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT_CLIENT_CLIENT_SECRET: ${CLIENT_SECRET}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT_CLIENT_AUTHORIZATION_GRANT_TYPE: client_credentials
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_PAYMENT_CLIENT_SCOPE: ${CLIENT_SCOPES}
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_PAYMENT_PROVIDER_TOKEN_URI: ${TOKEN_URI}
     ports:
-      - "8080:8080"
+      - "${STORE_PORT}:${STORE_PORT}"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
       payment-service:
+        condition: service_started
+      auth-server:
         condition: service_started
     restart: unless-stopped
 

@@ -1,6 +1,5 @@
 package ru.practicum.project.service;
 
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
@@ -10,45 +9,53 @@ import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.CartAction;
 import ru.practicum.project.model.CartLine;
 import ru.practicum.project.repository.CartLineRepository;
-import ru.practicum.project.repository.ItemRepository;
+import ru.practicum.project.security.config.CartAccessGuard;
 
 @Service
 @RequiredArgsConstructor
 public class CartServiceImpl implements CartService {
 	
 	private final CartLineRepository cartLineRepository;
-	private final ItemRepository itemRepository;
-	private final ModelMapper modelMapper;
+	private final ItemQueryService itemQueryService;
+	private final CartAccessGuard cartAccessGuard;
 
 	@Override
 	public Flux<ItemDto> getCartItems(Long cartId) {
-		return cartLineRepository.findByCartId(cartId)
-				.flatMap(line ->
-					itemRepository.findById(line.getItemId())
-						.map(item -> {
-							ItemDto dto = modelMapper.map(item, ItemDto.class);
-							dto.setCount(line.getQuantity());
-							return dto;
-						})
-				);
+	    return cartAccessGuard.requireOwner(cartId)
+	        .thenMany(
+	            cartLineRepository.findByCartId(cartId)
+	                .flatMap(line ->
+	                    itemQueryService.getItemById(line.getItemId())
+	                        .map(dto -> {
+	                            dto.setCount(line.getQuantity());
+	                            return dto;
+	                        })
+	                )
+	        );
 	}
 
 	@Override
 	public Mono<Integer> getTotal(Long cartId) {
-		return cartLineRepository.findByCartId(cartId)
-				.flatMap(line ->
-					itemRepository.findById(line.getItemId())
-						.map(item -> item.getPrice() * line.getQuantity())
-				)
-				.reduce(0, Integer::sum);
+	    return cartAccessGuard.requireOwner(cartId)
+	        .thenMany(
+	            cartLineRepository.findByCartId(cartId)
+	                .flatMap(line ->
+	                    itemQueryService.getItemById(line.getItemId())
+	                        .map(dto -> dto.getPrice() * line.getQuantity())
+	                )
+	        )
+	        .reduce(0, Integer::sum);
 	}
 
 	@Override
 	public Mono<Void> updateItem(Long cartId, Long itemId, CartAction action) {
-		return cartLineRepository.findByCartIdAndItemId(cartId, itemId)
-				.defaultIfEmpty(new CartLine(null, 0, cartId, itemId)) 
-				.flatMap(line -> handleAction(cartId, itemId, action, line))
-				.then();
+		return cartAccessGuard.requireOwner(cartId)
+	            .then(
+	                cartLineRepository.findByCartIdAndItemId(cartId, itemId)
+	                    .defaultIfEmpty(new CartLine(null, 0, cartId, itemId))
+	                    .flatMap(line -> handleAction(cartId, itemId, action, line))
+	                    .then()
+	            );
 	}
 
 	private Mono<CartLine> handleAction(Long cartId, Long itemId, CartAction action, CartLine line) {
@@ -78,5 +85,4 @@ public class CartServiceImpl implements CartService {
 		CartLine newLine = new CartLine(null, quantity, cartId, itemId);
 		return cartLineRepository.save(newLine);
 	}
-
 }

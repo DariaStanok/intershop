@@ -17,7 +17,6 @@ subprojects {
     java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
     tasks.withType(Test).configureEach { useJUnitPlatform() }
 
-    // ваш хак с r2dbc, если нужен всем модулям
     configurations.all {
         resolutionStrategy.dependencySubstitution {
             substitute module('io.r2dbc:r2dbc-postgresql') using module('org.postgresql:r2dbc-postgresql:1.0.5.RELEASE')

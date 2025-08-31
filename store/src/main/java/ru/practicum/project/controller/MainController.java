@@ -3,12 +3,12 @@ package ru.practicum.project.controller;
 import java.util.List;
 
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 
 import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
@@ -31,22 +31,30 @@ public class MainController {
         return "redirect:/main/items";
     }
 
-    @GetMapping("/main/items")
-    public String getItemsView() {
-        return "main"; 
-    }
+	/*
+	 * @GetMapping("/main/items") public String getItemsView() { return "main"; }
+	 */
 
-    @GetMapping("/main/items/data")
-    @ResponseBody
-    public Mono<ItemsPage> getItems(
-            @RequestParam(name = "search", defaultValue = "") String search,
-            @RequestParam(name = "sort", defaultValue = "NO") SortType sort,
-            @RequestParam(name = "pageSize", defaultValue = "10") int pageSize,
-            @RequestParam(name = "pageNumber", defaultValue = "1") int pageNumber,
-            @RequestParam(name = "cartId", required = false) Long cartId
+    @GetMapping("/main/items")
+    public Mono<String> getItemsView(
+        @RequestParam(name="search", defaultValue="") String search,
+        @RequestParam(name="sort",   defaultValue="NO") SortType sort,
+        @RequestParam(name="pageSize", defaultValue="5") int pageSize,
+        @RequestParam(name="pageNumber", defaultValue="1") int pageNumber,
+        @RequestParam(name="cartId", required=false) Long cartId,
+        Model model
     ) {
-        return itemService.getItems(search, sort, pageNumber, pageSize, cartId)
-                .map(rows -> new ItemsPage(rows, pageNumber, pageSize, search, sort));
+      model.addAttribute("search", search);
+      model.addAttribute("sort", sort);
+      model.addAttribute("pageSize", pageSize);
+      model.addAttribute("pageNumber", pageNumber);
+      model.addAttribute("cartId", cartId);
+
+      return itemService.getItems(search, sort, pageNumber, pageSize, cartId)
+          .map(rows -> {
+            model.addAttribute("items", rows); 
+            return "main";
+          });
     }
 
     @PostMapping("/main/items/{itemId}")

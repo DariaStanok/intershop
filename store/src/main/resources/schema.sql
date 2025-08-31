@@ -1,30 +1,3 @@
-CREATE TABLE IF NOT EXISTS carts ( id SERIAL PRIMARY KEY );
-
-CREATE TABLE IF NOT EXISTS items (
-  id SERIAL PRIMARY KEY,
-  title VARCHAR(255),
-  description TEXT,
-  price INTEGER,
-  img_path VARCHAR(255),
-  views INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS orders ( id SERIAL PRIMARY KEY );
-
-CREATE TABLE IF NOT EXISTS order_item (
-  id SERIAL PRIMARY KEY,
-  order_id BIGINT,
-  item_id BIGINT,
-  count INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS cart_lines (
-  id SERIAL PRIMARY KEY,
-  quantity INTEGER,
-  cart_id BIGINT,
-  item_id BIGINT
-);
-
 CREATE TABLE IF NOT EXISTS app_user (
   id BIGSERIAL PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
@@ -41,4 +14,45 @@ CREATE TABLE IF NOT EXISTS app_user_roles (
   user_id BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
   role_id BIGINT NOT NULL REFERENCES app_role(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS items (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255),
+  description TEXT,
+  price INTEGER,
+  img_path VARCHAR(255),
+  views INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS balances (
+  id BIGSERIAL PRIMARY KEY,
+  username TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  amount BIGINT NOT NULL DEFAULT 0,
+  CONSTRAINT uq_balances_user_currency UNIQUE (username, currency)
+);
+
+CREATE TABLE IF NOT EXISTS carts (
+  id SERIAL PRIMARY KEY,
+  owner_username TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cart_lines (
+  id SERIAL PRIMARY KEY,
+  quantity INTEGER NOT NULL,
+  cart_id BIGINT NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
+  item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  user_name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS order_item (
+  id SERIAL PRIMARY KEY,
+  order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  count INTEGER NOT NULL
 );

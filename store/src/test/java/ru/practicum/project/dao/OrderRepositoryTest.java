@@ -5,58 +5,55 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 
-import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
-import ru.practicum.project.config.TestDataLoaderConfig;
-import ru.practicum.project.config.TestSchemaInitializer;
+import ru.practicum.project.config.PostgresR2dbcTestBase;
+import ru.practicum.project.model.Item;
+import ru.practicum.project.model.Order;
+import ru.practicum.project.model.OrderItem;
+import ru.practicum.project.repository.ItemRepository;
 import ru.practicum.project.repository.OrderItemRepository;
 import ru.practicum.project.repository.OrderRepository;
 
-@DataR2dbcTest(properties = {
-	    "spring.r2dbc.init.enabled=false",
-	    "spring.sql.init.mode=never"
-	})
-@Import({TestSchemaInitializer.class, TestDataLoaderConfig.class})
-class OrderRepositoryTest {
+@DataR2dbcTest
+@ActiveProfiles("test")
+class OrderRepositoryTest extends PostgresR2dbcTestBase {
 
-	@Autowired
-	private OrderRepository orderRepository;
+    @Autowired OrderRepository orderRepository;
+    @Autowired OrderItemRepository orderItemRepository;
+    @Autowired ItemRepository itemRepository;
 
-	@Autowired
-	private OrderItemRepository orderItemRepository;
+    Long orderId;
 
-	@BeforeEach
-	void init(@Autowired @Qualifier("initializeSchema") Mono<Void> schema,
-			@Autowired @Qualifier("preloadTestData") Mono<Void> preload) {
-		StepVerifier.create(schema.then(preload)).verifyComplete();
-	}
+    @BeforeEach
+    void seed() {
+        Item item = new Item(null, "Phone", "d", 1000, "img", 0);
+        Long itemId = itemRepository.save(item).map(Item::getId).block();
 
-	@Test
-	void testFindById() {
-		StepVerifier.create(orderRepository.findAll().next())
-				.assertNext(order -> assertThat(order.getId()).isNotNull())
-				.verifyComplete();
+        Order o = new Order(null, "alice");
+        orderId = orderRepository.save(o).map(Order::getId).block();
 
-		StepVerifier.create(orderRepository.findAll().next()
-				.flatMap(o -> orderItemRepository.findByOrderId(o.getId()).collectList()))
-		        .assertNext(items -> {
-					assertThat(items).hasSize(2);
-					assertThat(items.get(0).getCount()).isPositive();
-				}).verifyComplete();
-	}
+        orderItemRepository.save(new OrderItem(null, orderId, itemId, 3)).block();
+    }
 
-	@Test
-	void testFindAll() {
-		StepVerifier.create(orderRepository.findAll().collectList())
-					.assertNext(orders -> assertThat(orders).hasSize(1))
-				    .verifyComplete();
+    @Test
+    void findByUserName_and_findByIdAndUserName_and_findOrderItems() {
+        StepVerifier.create(orderRepository.findByUserName("alice").collectList())
+            .assertNext(list -> {
+                assertThat(list).hasSize(1);
+                assertThat(list.get(0).getId()).isEqualTo(orderId);
+            }).verifyComplete();
 
-		StepVerifier
-				.create(orderRepository.findAll().next().flatMapMany(o -> orderItemRepository.findByOrderId(o.getId())))
-				.expectNextCount(2).verifyComplete();
-	}
+        StepVerifier.create(orderRepository.findByIdAndUserName(orderId, "alice"))
+            .assertNext(o -> assertThat(o.getId()).isEqualTo(orderId))
+            .verifyComplete();
+
+        StepVerifier.create(orderItemRepository.findByOrderId(orderId).collectList())
+            .assertNext(items -> {
+                assertThat(items).hasSize(1);
+                assertThat(items.get(0).getCount()).isEqualTo(3);
+            }).verifyComplete();
+    }
 }

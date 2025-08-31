@@ -7,5 +7,7 @@ import ru.practicum.project.dto.ItemDto;
 
 @Service
 public interface ItemQueryService {
-	public Mono<ItemDto> getItemById(Long id);
+	  Mono<ItemDto> getItemById(Long id);
+	  Mono<Boolean> evict(Long id);     
+	  Mono<ItemDto> warmUp(Long id); 
 }

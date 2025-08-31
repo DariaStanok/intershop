@@ -1,12 +1,13 @@
 plugins {
     id 'org.springframework.boot' version '3.5.3'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'java'
+    id 'java-library'
     id 'org.openapi.generator' version '7.10.0'
 }
 
 group = 'ru.practicum.project'
 version = '0.0.2-SNAPSHOT'
+
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }
@@ -27,8 +28,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+    api 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation project(':security')
+ 
 
     runtimeOnly 'org.postgresql:r2dbc-postgresql:1.0.5.RELEASE'
     runtimeOnly 'org.postgresql:postgresql'
@@ -48,6 +51,10 @@ dependencies {
     }
     testImplementation 'io.projectreactor:reactor-test'
     testImplementation 'org.mockito:mockito-junit-jupiter'
+    testImplementation 'org.mockito:mockito-inline' 
+    testImplementation 'org.testcontainers:postgresql'         
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers' 
+    testImplementation 'org.springframework.security:spring-security-test'
 
     testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
     testImplementation 'org.testcontainers:junit-jupiter'
@@ -73,6 +80,13 @@ tasks.compileJava.dependsOn tasks.openApiGenerate
 sourceSets.main.java.srcDirs += "$buildDir/generated/src/main/java"
 
 tasks.named('test') { useJUnitPlatform() }
+
+tasks.named('bootJar') {
+    archiveFileName = 'store.jar'
+}
+tasks.test {
+    systemProperty("spring.profiles.active", "test")
+}
 
 springBoot { mainClass = 'ru.practicum.project.IntershopApplication' }
 

@@ -2,6 +2,7 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
+/out/
 
 # Environment config 
 .env  
@@ -37,12 +38,14 @@ ehthumbs.db
 *.swp
 
 # Java
-
+*.jar
+*.war
+*.ear
 *.class
 
 # Spring/Dev
 
 .factorypath
 
-# File 
-uploads/
+# File uploads (local only)
+ /uploads/

@@ -1,93 +1,112 @@
 package ru.practicum.project.controller;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.web.reactive.server.WebTestClient;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ui.ConcurrentModel;
+import org.springframework.ui.Model;
 
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
+import ru.practicum.project.dto.ItemDto;
 import ru.practicum.project.enams.CartAction;
+import ru.practicum.project.enams.SortType;
 import ru.practicum.project.service.CartService;
 import ru.practicum.project.service.ItemService;
 
-@WebFluxTest(MainController.class)
+@ExtendWith(MockitoExtension.class)
 class MainControllerTest {
 
-    @Autowired
-    private WebTestClient webTestClient;
-
-    @MockBean
+    @Mock
     private ItemService itemService;
 
-    @MockBean
+    @Mock
     private CartService cartService;
 
+    @InjectMocks
+    private MainController controller;
+
     @Test
-    void redirectsToMainTest() {
-        webTestClient.get()
-                .uri("/")
-                .exchange()
-                .expectStatus().is3xxRedirection()
-                .expectHeader().valueEquals("Location", "/main/items");
+    void index_redirectsToItems() {
+        String view = controller.index();
+        assertThat(view).isEqualTo("redirect:/main/items");
     }
 
     @Test
-    void mainPageWithModelAttributesTest() {
-        when(itemService.getItems(anyString(), any(), anyInt(), anyInt(), anyLong()))
-                .thenReturn(Mono.just(List.of()));
-        when(cartService.getTotal(anyLong()))
-                .thenReturn(Mono.just(0));
+    void getItemsView_populatesModel_andReturnsMainTemplate() {
+        String search = "phone";
+        SortType sort = SortType.ABC;
+        int pageSize = 6;
+        int pageNumber = 2;
+        Long cartId = 77L;
 
-        webTestClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/main/items")
-                        .queryParam("search", "")
-                        .queryParam("sort", "NO")
-                        .queryParam("pageSize", "10")
-                        .queryParam("pageNumber", "1")
-                        .queryParam("cartId", "123")
-                        .build())
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody(String.class) 
-                .consumeWith(response -> {
-                    String html = response.getResponseBody();
-                    assert html != null;
-                    assert html.contains("main"); 
-                });
+        ItemDto a = new ItemDto(); a.setId(1L); a.setTitle("Alpha"); a.setPrice(100);
+        ItemDto b = new ItemDto(); b.setId(2L); b.setTitle("Beta");  b.setPrice(200);
+        List<List<ItemDto>> rows = List.of(List.of(a, b));
+
+        when(itemService.getItems(search, sort, pageNumber, pageSize, cartId))
+            .thenReturn(Mono.just(rows));
+        Model model = new ConcurrentModel();
+
+        StepVerifier.create(
+                controller.getItemsView(search, sort, pageSize, pageNumber, cartId, model)
+        )
+        .assertNext(view -> {
+            assertThat(view).isEqualTo("main");
+            assertThat(model.getAttribute("search")).isEqualTo(search);
+            assertThat(model.getAttribute("sort")).isEqualTo(sort);
+            assertThat(model.getAttribute("pageSize")).isEqualTo(pageSize);
+            assertThat(model.getAttribute("pageNumber")).isEqualTo(pageNumber);
+            assertThat(model.getAttribute("cartId")).isEqualTo(cartId);
+
+            @SuppressWarnings("unchecked")
+            List<List<ItemDto>> items = (List<List<ItemDto>>) model.getAttribute("items");
+            assertThat(items).isEqualTo(rows);
+        })
+        .verifyComplete();
+
+        verify(itemService).getItems(search, sort, pageNumber, pageSize, cartId);
     }
 
     @Test
-    void updateCartItemTest() {
-        when(cartService.updateItem(anyLong(), anyLong(), any()))
-                .thenReturn(Mono.empty());
+    void updateCartFromMain_redirectsAndCallsService() {
+        Long itemId = 10L;
+        Long cartId = 77L;
+        String search = "phone";
+        SortType sort = SortType.NO;
+        int pageSize = 5;
+        int pageNumber = 3;
 
-        webTestClient.post()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/main/items/1")
-                        .queryParam("action", "plus")
-                        .queryParam("cartId", "123")
-                        .queryParam("search", "")
-                        .queryParam("sort", "NO")
-                        .queryParam("pageSize", "10")
-                        .queryParam("pageNumber", "1")
-                        .build())
-                .exchange()
-                .expectStatus().is3xxRedirection()
-                .expectHeader().valueMatches("Location",
-                	    "/main/items\\?.*(cartId=123).*");
+        when(cartService.updateItem(cartId, itemId, CartAction.PLUS)).thenReturn(Mono.empty());
 
-        verify(cartService).updateItem(eq(123L), eq(1L), eq(CartAction.PLUS));
+        StepVerifier.create(
+                controller.updateCartFromMain(
+                        itemId,
+                        "plus",        
+                        cartId,
+                        search,
+                        sort,
+                        pageSize,
+                        pageNumber
+                )
+        )
+        .assertNext(view -> {
+            String expected = String.format(
+                "redirect:/main/items?search=%s&sort=%s&pageSize=%d&pageNumber=%d&cartId=%d",
+                search, sort, pageSize, pageNumber, cartId
+            );
+            assertThat(view).isEqualTo(expected);
+        })
+        .verifyComplete();
+
+        verify(cartService).updateItem(cartId, itemId, CartAction.PLUS);
     }
 }

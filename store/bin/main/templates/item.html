@@ -28,6 +28,7 @@
             <span th:text="${item.getDescription()}"></span>
         </p>
         <form th:action="${'/items/'+item.getId()}" method="post">
+         <input type="hidden" name="cartId" th:value="${param.cartId}">
             <button name="action" value="minus">-</button>
             <span th:text="${item.getCount()}"></span>
             <button name="action" value="plus">+</button>
